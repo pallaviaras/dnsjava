@@ -23,6 +23,10 @@ public class SimpleResolver implements Resolver {
 /** The default port to send queries to */
 public static final int DEFAULT_PORT = 53;
 
+/** The default port for DOT */
+public static final int DEFAULT_DOT_PORT = 853;
+
+
 /** The default EDNS payload size */
 public static final int DEFAULT_EDNS_PAYLOADSIZE = 1280;
 
@@ -251,8 +255,13 @@ send(Message query) throws IOException {
 		if (useTCP || out.length > udpSize)
 			tcp = true;
 		if (tcp)
-			in = TCPClient.sendrecv(localAddress, address, out,
+			if (address.getPort()== DEFAULT_DOT_PORT ) {
+				in = TLSClient.sendrecv(localAddress, address, out,
 						endTime);
+			}else {
+				in = TCPClient.sendrecv(localAddress, address, out,
+						endTime);
+			}
 		else
 			in = UDPClient.sendrecv(localAddress, address, out,
 						udpSize, endTime);

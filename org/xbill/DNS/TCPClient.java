@@ -64,6 +64,7 @@ send(byte [] data) throws IOException {
 			} else
 				blockUntil(key, endTime);
 		}
+		System.out.println("Bytes sent" + nsent);
 	}
 	finally {
 		if (key.isValid())
@@ -91,6 +92,7 @@ _recv(int length) throws IOException {
 			} else
 				blockUntil(key, endTime);
 		}
+		System.out.println("Bytes received" + nrecvd);
 	}
 	finally {
 		if (key.isValid())
