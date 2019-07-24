@@ -101,13 +101,13 @@ final class TLSClient extends Client {
 							} else {
 								blockUntil(key, endTime);
 						    }// ELSE
-					  }
-					 if (nsent < data.length + 2
-								&& System.currentTimeMillis() > endTime) {
-							throw new SocketTimeoutException();
-					}
-				System.out.println("Bytes Sent" +  nsent);
-				}
+					    }// end While
+						if (nsent < data.length + 2
+									&& System.currentTimeMillis() > endTime) {
+								throw new SocketTimeoutException();
+						}
+						System.out.println("Bytes Sent" +  nsent);
+				    }// end If
 			} //WHILE
 	
 		} finally {
@@ -115,6 +115,100 @@ final class TLSClient extends Client {
 				key.interestOps(0);
 		}
 		//printSessionInfo ( session, "SEND");
+	}
+	
+	
+	private byte[] _recv(int length) throws IOException {
+		
+		SSLSession session = engine.getSession();
+		SocketChannel channel = (SocketChannel) key.channel();
+		printSessionInfo ( session,  "Receive");
+		int nrecvd = 0;
+		byte[] data = new byte[length];
+		ByteBuffer peerAppData = ByteBuffer.allocate(session.getApplicationBufferSize());
+		ByteBuffer peerNetData = ByteBuffer.allocate(session.getPacketBufferSize());
+		peerAppData = ByteBuffer.wrap(data);
+		
+		try {
+			SSLEngineResult.HandshakeStatus hs = engine.getHandshakeStatus();
+			System.out.println("Handshake Status Received" +  hs);
+			System.out.println("Data to be processd" +  length);
+			key.interestOps(SelectionKey.OP_READ);
+			
+			while (nrecvd < length) {
+					if (key.isReadable()) {
+						long n = channel.read(peerNetData);
+						System.out.println("Bytes read: " +  n);
+						 // Process incoming data
+					    SSLEngineResult res = engine.unwrap(peerNetData, peerAppData);
+					    if (res.getStatus() == SSLEngineResult.Status.OK) {
+					        peerNetData.compact();
+					        peerNetData.flip();    
+							if (n < 0)
+								throw new EOFException();
+							nrecvd += (int) n;
+							if (nrecvd < length && System.currentTimeMillis() > endTime) {
+								throw new SocketTimeoutException();
+							}							
+							System.out.println("Bytes Received" +  nrecvd);
+					    	} 
+					} else {
+						blockUntil(key, endTime);
+				    }
+			} // While
+		} finally {
+			if (key.isValid())
+				key.interestOps(0);
+		}
+		return data;
+	}
+
+	byte[] recv() throws IOException {
+		byte[] buf = _recv(2);
+		int length = ((buf[0] & 0xFF) << 8) + (buf[1] & 0xFF);
+		byte[] data = _recv(length);
+		SocketChannel channel = (SocketChannel) key.channel();
+		verboseLog("TCP read", channel.socket().getLocalSocketAddress(),
+				channel.socket().getRemoteSocketAddress(), data);
+		return data;
+	}
+
+	static byte[] sendrecv(SocketAddress local, SocketAddress remote,
+			byte[] data, long endTime) throws IOException {
+		TLSClient client = new TLSClient(endTime);
+		try {
+			if (local != null)
+				client.bind(local);
+			client.connect(remote);
+			client.send(data);
+			return client.recv();
+		} finally {
+			System.out.println("Cleanup");
+			client.cleanup();
+		}
+	}
+
+	static byte[] sendrecv(SocketAddress addr, byte[] data, long endTime)
+			throws IOException {
+		return sendrecv(null, addr, data, endTime);
+	}
+	
+	static void printSessionInfo (SSLSession session, String location) {
+		try {
+		System.out.println(location);
+		Certificate[] cchain = session.getPeerCertificates();
+		for (int i = 0; i < cchain.length; i++) {
+		      System.out.println(((X509Certificate) cchain[i]).getSubjectDN());
+		    }
+		    System.out.println("Peer host is " + session.getPeerHost());
+		    System.out.println("Cipher is " + session.getCipherSuite());
+		    System.out.println("Protocol is " + session.getProtocol());
+		    System.out.println("ID is " + new BigInteger(session.getId()));
+		    System.out.println("Session created in " + session.getCreationTime());
+		    System.out.println("Session accessed in " + session.getLastAccessedTime());
+		}catch(Exception ex) {
+			ex.printStackTrace();
+			}
 	}
 	
 	private void doHandShake(SocketChannel channel) {
@@ -187,99 +281,6 @@ final class TLSClient extends Client {
 		}
 	}
 
-	private byte[] _recv(int length) throws IOException {
-		
-		SSLSession session = engine.getSession();
-		SocketChannel channel = (SocketChannel) key.channel();
-		printSessionInfo ( session,  "Receive");
-		int nrecvd = 0;
-		byte[] data = new byte[length];
-		ByteBuffer peerAppData = ByteBuffer.allocate(session.getApplicationBufferSize());
-		ByteBuffer peerNetData = ByteBuffer.allocate(session.getPacketBufferSize());
-		peerAppData = ByteBuffer.wrap(data);
-		
-		try {
-			SSLEngineResult.HandshakeStatus hs = engine.getHandshakeStatus();
-			System.out.println("Handshake Status Received" +  hs);
-			System.out.println("Data to be processd" +  length);
-			key.interestOps(SelectionKey.OP_READ);
-			System.out.println("Key Readable: " +  key.isReadable() + "Key Valid: " +  key.isValid());
-			
-			while (nrecvd < length) {
-					if (key.isReadable()) {
-						long n = channel.read(peerNetData);
-						 // Process incoming data
-					   
-					    SSLEngineResult res = engine.unwrap(peerNetData, peerAppData);
-					    if (res.getStatus() == SSLEngineResult.Status.OK) {
-					        peerNetData.compact();
-					        peerNetData.flip();    
-							if (n < 0)
-								throw new EOFException();
-							nrecvd += (int) n;
-							if (nrecvd < length && System.currentTimeMillis() > endTime)
-								throw new SocketTimeoutException();
-							System.out.println("Bytes Received" +  nrecvd);
-					} else {
-						blockUntil(key, endTime);
-					}
-				}
-			}	
-			
-		} finally {
-			//if (key.isValid())
-			//	key.interestOps(0);
-		}
-		return data;
-	}
-
-	byte[] recv() throws IOException {
-		byte[] buf = _recv(2);
-		int length = ((buf[0] & 0xFF) << 8) + (buf[1] & 0xFF);
-		byte[] data = _recv(length);
-		SocketChannel channel = (SocketChannel) key.channel();
-		verboseLog("TCP read", channel.socket().getLocalSocketAddress(),
-				channel.socket().getRemoteSocketAddress(), data);
-		return data;
-	}
-
-	static byte[] sendrecv(SocketAddress local, SocketAddress remote,
-			byte[] data, long endTime) throws IOException {
-		TLSClient client = new TLSClient(endTime);
-		try {
-			if (local != null)
-				client.bind(local);
-			client.connect(remote);
-			client.send(data);
-			return client.recv();
-		} finally {
-			System.out.println("Cleanup");
-			client.cleanup();
-		}
-	}
-
-	static byte[] sendrecv(SocketAddress addr, byte[] data, long endTime)
-			throws IOException {
-		return sendrecv(null, addr, data, endTime);
-	}
-	
-	static void printSessionInfo (SSLSession session, String location) {
-		try {
-		System.out.println(location);
-		Certificate[] cchain = session.getPeerCertificates();
-		for (int i = 0; i < cchain.length; i++) {
-		      System.out.println(((X509Certificate) cchain[i]).getSubjectDN());
-		    }
-		    System.out.println("Peer host is " + session.getPeerHost());
-		    System.out.println("Cipher is " + session.getCipherSuite());
-		    System.out.println("Protocol is " + session.getProtocol());
-		    System.out.println("ID is " + new BigInteger(session.getId()));
-		    System.out.println("Session created in " + session.getCreationTime());
-		    System.out.println("Session accessed in " + session.getLastAccessedTime());
-		}catch(Exception ex) {
-			ex.printStackTrace();
-			}
-		}
 		
 		
 
